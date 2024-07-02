@@ -362,8 +362,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         prompt: str = "",
-        height: int = 576,
-        width: int = 1024,
+        orig_height: int = 576,
+        orig_width: int = 1024,
         num_frames: Optional[int] = None,
         num_inference_steps: int = 25,
         min_guidance_scale: float = 1.0,
@@ -403,9 +403,9 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
                 Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0, 1]`.
-            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            orig_height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            orig_width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             num_frames (`int`, *optional*):
                 The number of video frames to generate. Defaults to `self.unet.config.num_frames`
@@ -488,14 +488,14 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
 
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        orig_height = orig_height or self.unet.config.sample_size * self.vae_scale_factor
+        orig_width = orig_width or self.unet.config.sample_size * self.vae_scale_factor
 
         num_frames = num_frames if num_frames is not None else self.unet.config.num_frames
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, height, width)
+        self.check_inputs(image, orig_height, orig_width)
 
         # 2. Define call parameters
         if isinstance(image, PIL.Image.Image):
@@ -530,8 +530,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             assert len(control_images) == video_length * batch_size
             images = self.helper.prepare_images(
                     images=control_images,
-                    width=width,
-                    height=height,
+                    width=orig_width,
+                    height=orig_height,
                     batch_size=batch_size,
                     num_images_per_prompt=1,
                     device=device,
@@ -539,7 +539,7 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
-            height, width = images.shape[-2:]
+            orig_height, orig_width = images.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
             raise Exception("not supported yet")
         else:
@@ -557,7 +557,7 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
+        image = self.image_processor.preprocess(image, height=orig_height, width=orig_width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
@@ -603,8 +603,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             batch_size * num_videos_per_prompt,
             num_frames,
             num_channels_latents,
-            height,
-            width,
+            orig_height,
+            orig_width,
             image_embeddings.dtype,
             device,
             generator,
@@ -662,9 +662,9 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
 
                 _, _, control_model_input_h, control_model_input_w = control_model_input.shape
-                if (control_model_input_h, control_model_input_w) != (width / self.vae_scale_factor, height / self.vae_scale_factor):
-                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (width / self.vae_scale_factor, height / self.vae_scale_factor))
-                    reshaped_images = F.adaptive_avg_pool2d(images, (width, height))
+                if (control_model_input_h, control_model_input_w) != (orig_width / self.vae_scale_factor, orig_height / self.vae_scale_factor):
+                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (orig_width / self.vae_scale_factor, orig_height / self.vae_scale_factor))
+                    reshaped_images = F.adaptive_avg_pool2d(images, (orig_width, orig_height))
                 else:
                     reshaped_control_model_input = control_model_input
                     reshaped_images = images

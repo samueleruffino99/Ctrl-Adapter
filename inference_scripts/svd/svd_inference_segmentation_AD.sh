@@ -1,6 +1,6 @@
 python inference.py \
 --model_name "svd" \
---control_types "depth" \
+--control_types "segmentation" \
 --huggingface_checkpoint_folder "svd_depth" \
 --eval_input_type "frames" \
 --evaluation_input_folder "assets/evaluation/frames" \
@@ -10,4 +10,5 @@ python inference.py \
 --control_guidance_end 0.8 \
 --use_size_512 false \
 --height 128 \
---width 128
+--width 128 \
+--evaluation_prompt_file "captions_AD_real.json" 
