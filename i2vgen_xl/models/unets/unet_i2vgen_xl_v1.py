@@ -529,7 +529,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         
         down_block_additional_residuals = None, ### this is newly added
         mid_block_additional_residual = None, ### this is newly added
-        num_ref_frames=None, #SAM: added for condition on multiple frames
                                 
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple[torch.FloatTensor]]:
@@ -615,9 +614,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
         context_emb = torch.cat([context_emb, encoder_hidden_states], dim=1)
 
-        #SAM: add multiple image_latents (not only the first one)
-        # image_latents_for_context_embds = image_latents[:, :, :1, :]
-        image_latents_for_context_embds = image_latents[:, :, :num_ref_frames, :]
+        image_latents_for_context_embds = image_latents[:, :, :1, :]
         image_latents_context_embs = image_latents_for_context_embds.permute(0, 2, 1, 3, 4).reshape(
             image_latents_for_context_embds.shape[0] * image_latents_for_context_embds.shape[2],
             image_latents_for_context_embds.shape[1],
@@ -630,9 +627,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_latents_context_embs = image_latents_context_embs.permute(0, 2, 3, 1).reshape(
             _batch_size, _height * _width, _channels
         )
-
-        #SAM: add multiple image_latents (not only the first one)
-        context_emb = context_emb.repeat_interleave(num_ref_frames, dim=0)
         context_emb = torch.cat([context_emb, image_latents_context_embs], dim=1)
 
         image_emb = self.context_embedding(image_embeddings)
@@ -694,9 +688,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             for down_block_res_sample, down_block_additional_residual in zip(
                     down_block_res_samples, down_block_additional_residuals
             ):
-                # if the shape of down_block_additional_residual is not suffiecient please torch interpolate
-                if down_block_res_sample.shape[2:] != down_block_additional_residual.shape[2:]:
-                    down_block_additional_residual = torch.nn.functional.interpolate(down_block_additional_residual, size=down_block_res_sample.shape[2:], mode='bilinear', align_corners=False)
                 down_block_res_sample = down_block_res_sample + down_block_additional_residual
                 new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
 
@@ -719,11 +710,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if mid_block_additional_residual is not None:
             if mid_block_additional_residual.dim() == 5:
                 mid_block_additional_residual = rearrange(mid_block_additional_residual, "b c f h w -> (b f) c h w")
-            # if the shape of mid_block_additional_residual is not suffiecient please torch interpolate
-            if sample.shape[2:] != mid_block_additional_residual.shape[2:]:
-                # print(" before sample.shape, mid_block_additional_residual.shape", sample.shape, mid_block_additional_residual.shape)
-                mid_block_additional_residual = torch.nn.functional.interpolate(mid_block_additional_residual, size=sample.shape[2:], mode='bilinear', align_corners=False)
-                # print(" after sample.shape, mid_block_additional_residual.shape", sample.shape, mid_block_additional_residual.shape)
             sample = sample + mid_block_additional_residual
         ###
              

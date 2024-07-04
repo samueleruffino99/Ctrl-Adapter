@@ -489,20 +489,29 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         image,
         device,
         num_frames,
+        num_ref_frames,
         num_videos_per_prompt,
     ):
         image = image.to(device=device)
         image_latents = self.vae.encode(image).latent_dist.sample()
         image_latents = image_latents * self.vae.config.scaling_factor
 
-        # Add frames dimension to image latents
-        image_latents = image_latents.unsqueeze(2)
+        #SAM: original was:
+        # image_latents = image_latents.unsqueeze(2)
+        # Add frames dimension to image latents 
+        if image_latents.shape[0] == 1:
+            image_latents = image_latents.unsqueeze(2)
+        else: # if multiple images are passed
+            image_latents = image_latents.unsqueeze(0).permute(0, 2, 1, 3, 4)
 
         # Append a position mask for each subsequent frame
         # after the intial image latent frame
+        #SAM: original was:
+        # for frame_idx in range(num_frames - 1):
+        #     scale = (frame_idx + 1) / (num_frames - 1)
         frame_position_mask = []
-        for frame_idx in range(num_frames - 1):
-            scale = (frame_idx + 1) / (num_frames - 1)
+        for frame_idx in range(num_frames - num_ref_frames):
+            scale = (frame_idx + 1) / (num_frames - num_ref_frames)
             frame_position_mask.append(torch.ones_like(image_latents[:, :, :1]) * scale)
         if frame_position_mask:
             frame_position_mask = torch.cat(frame_position_mask, dim=2)
@@ -677,6 +686,9 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                 control_guidance_end
             ]
         ###
+
+        #SAM: number of reference frames
+        n_ref_frammes = len(image) if isinstance(image, list) else 1
         
 
         # 0. Default height and width to unet
@@ -808,6 +820,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
             image,
             device=device,
             num_frames=num_frames,
+            num_ref_frames=n_ref_frammes,
             num_videos_per_prompt=num_videos_per_prompt,
         )
 
@@ -1095,6 +1108,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                     cross_attention_kwargs=cross_attention_kwargs,
                     down_block_additional_residuals=full_adapted_down_block_res_samples, ### newly added
                     mid_block_additional_residual=full_adapted_mid_block_res_sample, ### newly added
+                    num_ref_frames=n_ref_frammes,
                     return_dict=False,
                 )[0]
 
