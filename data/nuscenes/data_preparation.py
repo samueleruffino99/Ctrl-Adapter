@@ -1,6 +1,10 @@
+# Description: This script prepares the data for training the model, generating:
+# - csv file with the captions for each scene
+# - video segments from the original videos of length segment_length
 import os
 import json
 import cv2
+import argparse
 
 from utils.utils_data import get_video_files, get_frames, save_captions
 
@@ -72,14 +76,29 @@ def process_videos(input_dir, output_dir):
 
 def main():
     # TODO: ask Jasper for the jappie_seg json file and frames directory data
-    input_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos"
-    output_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos_segments"
-    json_path = "/home/wisley/custom_diffusers_library/src/diffusers/jasper/jappie_seg.json"
-    csv_path = "jasper_captions.csv"
+    parser = argparse.ArgumentParser(description='Prepare Nuscenes data for training the model.')
+    parser.add_argument('--input-dir', default='', type=str, help='Directory containing the videos.')
+    parser.add_argument('--output-dir', default='', type=str, help='Directory to save the video segments.')
+    parser.add_argument('--json-path', default='', type=str, help='Path to the json file containing the captions.')
+    parser.add_argument('--csv-filename', default='', type=str, help='Filename of the csv file containing the captions.')
+    parser.add_argument('--segment-length', default=16, type=int, help='Length of each video segment.')
+    parser.add_argument('--debugpy', action='store_true', help='Enable debugpy for remote debugging')
+    args = parser.parse_args()
 
-    captions = load_captions(json_path, output_dir)
-    save_captions(captions, csv_path)
-    process_videos(input_dir, output_dir)
+    if args.debugpy:
+        import debugpy
+        debugpy.listen(5678)
+        print("Waiting for debugger attach")
+        debugpy.wait_for_client()
+        
+    # input_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos"
+    # output_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos_segments"
+    # json_path = "/home/wisley/custom_diffusers_library/src/diffusers/jasper/jappie_seg.json"
+    # csv_path = "jasper_captions.csv"
+
+    captions = load_captions(args.json_path, args.output_dir)
+    save_captions(captions, args.csv_filename)
+    process_videos(args.input_dir, args.output_dir)
 
 if __name__ == "__main__":
     main()

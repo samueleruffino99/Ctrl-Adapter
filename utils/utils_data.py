@@ -48,17 +48,32 @@ def save_captions(captions, csv_path):
         writer.writerows(captions)
 
 
+def resize_image(image, scale_factor):
+    """
+    Resize an image by a scale factor using OpenCV.
+
+    Args:
+        image (np.array): The original image.
+        scale_factor (float): Factor by which the image will be resized.
+
+    Returns:
+        np.array: Resized image.
+    """
+    width = int(image.shape[1] * scale_factor)
+    height = int(image.shape[0] * scale_factor)
+    dimensions = (width, height)
+    return cv2.resize(image, dimensions, interpolation=cv2.INTER_AREA)
+
+
 def adjust_fov(image, fov_from=120, fov_to=94):
     """
     Adjust the Field of View (FOV) of an image from fov_from to fov_to.
-    
-    Parameters:
-    image (numpy.ndarray): The input image.
-    fov_from (float): The initial field of view in degrees.
-    fov_to (float): The desired field of view in degrees.
-    
+    Args:
+        image (numpy.ndarray): The input image.
+        fov_from (float): The initial field of view in degrees.
+        fov_to (float): The desired field of view in degrees.
     Returns:
-    numpy.ndarray: The image with adjusted FOV. """
+        numpy.ndarray: The image with adjusted FOV. """
     height, width = image.shape[:2]
     
     # Convert degrees to radians

@@ -1,7 +1,6 @@
 python inference.py \
 --model_name "i2vgenxl" \
 --control_types "segmentation" \
---segmentation_type "odise" \
 --huggingface_checkpoint_folder "i2vgenxl_multi_control_adapter" \
 --eval_input_type "frames" \
 --evaluation_input_folder "assets/evaluation/frames" \
@@ -9,6 +8,6 @@ python inference.py \
 --num_inference_steps 50 \
 --control_guidance_end 0.8 \
 --use_size_512 false \
---height 144 \
---width 256 \
+--height 512 \
+--width 512 \
 --evaluation_prompt_file "captions_AD_real.json" 

@@ -81,7 +81,7 @@ def process_images(input_dir, output_dir, fov_from, fov_to, adjust_fov_method=Tr
                     resized_image = cv2.resize(adjusted_image, (640, new_height))
                     
                     # Crop the height to the center 360 pixels
-                    start_y = (  - 360) // 2
+                    start_y = (new_height - 360) // 2
                     cropped_image = resized_image[start_y:start_y+360, :]
                     
                     cv2.imwrite(output_path, cropped_image)
