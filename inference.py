@@ -98,6 +98,11 @@ def parse_inference_args():
             For video generation, we recommend setting this parameter with the same default value of the corresponding video diffusion backbone."
             )
     inference_parser.add_argument(
+        "--output_fps", 
+        type=int, default=16, 
+        help="This is the frame rate of the output gif"
+        )
+    inference_parser.add_argument(
         "--n_ref_frames", 
         type=int, default=1,
         help="This is the number of input frames for video generation. \
@@ -252,6 +257,7 @@ def inference_main(inference_args):
             low_cpu_mem_usage=False, 
             device_map=None
             )
+        print(f"Loaded adapter from {inference_args.local_checkpoint_path} with global step {inference_args.global_step}")
 
     adapter = adapter.to(data_type)
     adapter.eval()
@@ -315,7 +321,7 @@ def inference_main(inference_args):
 
 
     # initialize helper class
-    helper = ControlNetHelper(use_size_512 = inference_args.use_size_512, 
+    helper = ControlNetHelper(use_size_512 = inference_args.use_size_512,
                               width = inference_args.width, 
                               height = inference_args.height)
     if inference_args.extract_control_conditions:
@@ -352,7 +358,7 @@ def inference_main(inference_args):
         'canny': "lllyasviel/control_v11p_sd15_canny",
         'normal': "lllyasviel/control_v11p_sd15_normalbae",
         # 'segmentation': "lllyasviel/control_v11p_sd15_seg",
-        # 'segmentation': 'JaspervanLeuven/controlnet_rect',
+        'segmentation': 'JaspervanLeuven/controlnet_rect',
         'softedge': "lllyasviel/control_v11p_sd15_softedge",
         'lineart': "lllyasviel/control_v11p_sd15_lineart",
         'openpose': "lllyasviel/control_v11p_sd15_openpose",
@@ -361,12 +367,12 @@ def inference_main(inference_args):
 
     #SAM
     # change segmentation model based on the segmentation_type used 
-    if inference_args.segmentation_type == 'odise':
-        model_paths['segmentation'] = "JaspervanLeuven/controlnet_rect"
-    elif inference_args.segmentation_type == 'ade':
-        model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
-    else:
-        model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
+    # if inference_args.segmentation_type == 'odise':
+    #     model_paths['segmentation'] = "JaspervanLeuven/controlnet_rect"
+    # elif inference_args.segmentation_type == 'ade':
+    #     model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
+    # else:
+    #     model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
     
     for control_type, model_path in model_paths.items():
         if (len(inference_args.control_types) == 1 and control_type in inference_args.control_types) or (len(inference_args.control_types) > 1): # single-condition control
@@ -462,7 +468,7 @@ def inference_main(inference_args):
             for cond_dir in condition_input_dir:
                 condition_images_path = os.path.join(cond_dir, sample)
                 #SAM prescan segmentation mapping
-                if 'segmentation' in cond_dir:
+                if 'segmentation' in cond_dir and inference_args.segmentation_type is not None:
                     if os.path.isdir(condition_images_path):
                         condition_frames = sorted(os.listdir(condition_images_path))[:inference_args.n_sample_frames]
                         conditioning_images_pil = [map_rgb(Image.open(os.path.join(condition_images_path, frame)), mapping_type=inference_args.segmentation_type) for frame in condition_frames]
@@ -471,9 +477,9 @@ def inference_main(inference_args):
                 else:
                     if os.path.isdir(condition_images_path):
                         condition_frames = sorted(os.listdir(condition_images_path))[:inference_args.n_sample_frames]
-                        conditioning_images_pil = [map_rgb(Image.open(os.path.join(condition_images_path, frame)), mapping_type=inference_args.segmentation_type) for frame in condition_frames]
+                        conditioning_images_pil = [Image.open(os.path.join(condition_images_path, frame)) for frame in condition_frames]
                     else:
-                        conditioning_images_pil = [map_rgb(Image.open(condition_images_path), mapping_type=inference_args.segmentation_type)]
+                        conditioning_images_pil = [Image.open(condition_images_path)]
                 
                 if inference_args.use_size_512:
                     # before giving to SDv1.5 ControlNet, center crop and resize the condition images to 512 * 512 
@@ -509,8 +515,8 @@ def inference_main(inference_args):
                 i2vgenxl_outputs = pipe(
                     prompt=prompt,
                     negative_prompt="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
-                    orig_height = inference_args.height, 
-                    orig_width = inference_args.width,
+                    height = inference_args.height, 
+                    width = inference_args.width,
                     image= images_pil[:inference_args.n_ref_frames],  #images_pil[0], #SAM
                     control_images = control_images,
                     num_inference_steps=inference_args.num_inference_steps,

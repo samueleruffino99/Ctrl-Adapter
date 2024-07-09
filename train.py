@@ -331,6 +331,11 @@ def parse_args():
         type=int, default=50, 
         help="We recommend setting the number of inference steps as the same default value of corresponding image/video generation backbone"
         )
+    parser.add_argument(
+        "--debugpy",
+        action="store_true",
+        help="Enable debugpy for remote debugging."
+        )
 
     # others and experimental 
     parser.add_argument("--lora", type=str)
@@ -344,6 +349,12 @@ def parse_args():
 
 
 def main(args):
+
+    if args.debugpy:
+        import debugpy
+        debugpy.listen(5678)
+        print("Waiting for debugger attach")
+        debugpy.wait_for_client()
     
     DATA_PATH = args.DATA_PATH # this is the path where all training checkpoints, and output images/videos will be stored
     model_name = args.model_name # sdxl, i2vgenxl, svd
@@ -499,7 +510,7 @@ def main(args):
 
     ### set up the helper class, which is mainly used for extracting different control conditions from the input data ###
     # you can add more control conditions by modifying the helper class following the same structure
-    helper = ControlNetHelper(use_size_512=args.use_size_512)
+    helper = ControlNetHelper(use_size_512=args.use_size_512, width=args.width, height=args.height)
     if 'depth' in args.control_types or 'depth' in args.mixed_control_types_training:
         if args.use_midas_depth_estimator: # (recommended) 
             # this can extract depth map pretty fast
@@ -537,7 +548,8 @@ def main(args):
         'depth': "lllyasviel/control_v11f1p_sd15_depth",
         'canny': "lllyasviel/control_v11p_sd15_canny",
         'normal': "lllyasviel/control_v11p_sd15_normalbae",
-        'segmentation': "lllyasviel/control_v11p_sd15_seg",
+        # 'segmentation': "lllyasviel/control_v11p_sd15_seg",
+        'segmentation': 'JaspervanLeuven/controlnet_rect',
         'softedge': "lllyasviel/control_v11p_sd15_softedge",
         'lineart': "lllyasviel/control_v11p_sd15_lineart",
         'openpose': "lllyasviel/control_v11p_sd15_openpose",
@@ -1191,7 +1203,7 @@ def main(args):
         noisy_latents = rearrange(noisy_latents, "bs c nf h w -> (bs nf) c h w")
         _, _, noisy_latents_h, noisy_latents_w = noisy_latents.shape
 
-        assert args.use_size_512 == True, "extention of different noisy latent sizes for SDv1.5 ControlNet input is left for future work"
+        # assert args.use_size_512 == True, "extention of different noisy latent sizes for SDv1.5 ControlNet input is left for future work"
         
         # resize noisy latents to 64 * 64, which is the default input feature size for SDv1.5 ControlNet
         # extention of different noisy latent sizes is left for future work
@@ -1339,7 +1351,7 @@ def main(args):
 
         # finally we can give the features after adapter to unet
         if model_name == 'i2vgenxl':     
-            assert (noisy_latents_h, noisy_latents_w) == (64, 64), "please note that we only support generating videos of resolution 512 * 512 "
+            # assert (noisy_latents_h, noisy_latents_w) == (64, 64), "please note that we only support generating videos of resolution 512 * 512 "
             # note that in our current codebase, we only support generating videos of resolution 512 * 512 
             # if you want to generate videos with different frames, you can use F.interpolate to resize full_adapted_down_block_res_samples and 
             # full_adapted_mid_block_res_sample into your desired size, before giving to i2vgenxl unet

@@ -529,7 +529,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         
         down_block_additional_residuals = None, ### this is newly added
         mid_block_additional_residual = None, ### this is newly added
-        num_ref_frames=None, #SAM: added for condition on multiple frames
+        num_ref_frames=1, #SAM: added for condition on multiple frames
                                 
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple[torch.FloatTensor]]:
@@ -632,7 +632,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
         #SAM: add multiple image_latents (not only the first one)
-        context_emb = context_emb.repeat_interleave(num_ref_frames, dim=0)
+        #context_emb = context_emb.repeat_interleave(num_ref_frames, dim=0)
+        #
         context_emb = torch.cat([context_emb, image_latents_context_embs], dim=1)
 
         image_emb = self.context_embedding(image_embeddings)

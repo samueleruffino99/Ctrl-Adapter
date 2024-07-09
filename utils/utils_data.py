@@ -48,23 +48,6 @@ def save_captions(captions, csv_path):
         writer.writerows(captions)
 
 
-def resize_image(image, scale_factor):
-    """
-    Resize an image by a scale factor using OpenCV.
-
-    Args:
-        image (np.array): The original image.
-        scale_factor (float): Factor by which the image will be resized.
-
-    Returns:
-        np.array: Resized image.
-    """
-    width = int(image.shape[1] * scale_factor)
-    height = int(image.shape[0] * scale_factor)
-    dimensions = (width, height)
-    return cv2.resize(image, dimensions, interpolation=cv2.INTER_AREA)
-
-
 def adjust_fov(image, fov_from=120, fov_to=94):
     """
     Adjust the Field of View (FOV) of an image from fov_from to fov_to.
@@ -101,6 +84,18 @@ def adjust_fov(image, fov_from=120, fov_to=94):
     dst = cv2.remap(image, map1, map2, cv2.INTER_LINEAR)
     
     return dst
+
+def resize_image(image, scale_factor=0.5):
+    """ Resize an image by a scale factor.
+    Args:
+        image (numpy.ndarray): The input image.
+        scale_factor (float): The scale factor.
+    Returns:
+        numpy.ndarray: The resized image. """
+    height, width = image.shape[:2]
+    new_height = int(height * scale_factor)
+    new_width = int(width * scale_factor)
+    return cv2.resize(image, (new_width, new_height))
 
 
 def map_rgb(image, mapping_type=None):
