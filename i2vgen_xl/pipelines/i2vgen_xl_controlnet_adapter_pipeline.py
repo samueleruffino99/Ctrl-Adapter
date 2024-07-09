@@ -548,8 +548,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         image: PipelineImageInput = None,
-        orig_height: Optional[int] = 704,
-        orig_width: Optional[int] = 1280,
+        height: Optional[int] = 704,
+        width: Optional[int] = 1280,
         target_fps: Optional[int] = 16,
         num_frames: int = 16,
         num_inference_steps: int = 50,
@@ -596,9 +596,9 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
                 Image or images to guide image generation. If you provide a tensor, it needs to be compatible with
                 [`CLIPImageProcessor`](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
-            orig_height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            orig_width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             target_fps (`int`, *optional*):
                 Frames per second. The rate at which the generated images shall be exported to a video after generation. This is also used as a "micro-condition" while generation.
@@ -680,11 +680,11 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         
 
         # 0. Default height and width to unet
-        orig_height = orig_height or self.unet.config.sample_size * self.vae_scale_factor
-        orig_width = orig_width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, image, orig_height, orig_width, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(prompt, image, height, width, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -749,13 +749,16 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
 
         # 3.1.5 Prepare image
         if isinstance(controlnet, ControlNetModel):
+            print("controlnet is ControlNetModel")
 
-            assert len(control_images) == video_length * batch_size
+            # Print the length of the control images
+
+            assert len(control_images) == video_length * batch_size, f"Length of control images is {len(control_images)} but should be {video_length * batch_size}"
        
             images = self.helper.prepare_images(
                     images=control_images,
-                    width=orig_width,
-                    height=orig_height,
+                    width=width,
+                    height=height,
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
@@ -764,7 +767,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                     guess_mode=guess_mode,
                 )
 
-            orig_height, orig_width = images.shape[-2:]
+            height, width = images.shape[-2:]
+            print("this is the height and the with", height, width)
         elif isinstance(controlnet, MultiControlNetModel):
 
             images = []
@@ -772,8 +776,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
             for image_ in control_images:
                 image_ = self.helper.prepare_images(
                     images=image_,
-                    width=orig_width,
-                    height=orig_height,
+                    width=width,
+                    height=height,
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
@@ -785,7 +789,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                 images.append(image_)
             
             #image = images
-            orig_height, orig_width = images[0].shape[-2:]
+            height, width = images[0].shape[-2:]
 
         else:
             assert False
@@ -795,14 +799,14 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         # 3.2 Encode image prompt
         # 3.2.1 Image encodings.
         # https://github.com/ali-vilab/i2vgen-xl/blob/2539c9262ff8a2a22fa9daecbfd13f0a2dbc32d0/tools/inferences/inference_i2vgen_entrance.py#L114
-        cropped_image = _center_crop_wide(image, (orig_width, orig_width))
+        cropped_image = _center_crop_wide(image, (width, width))
         cropped_image = _resize_bilinear(
             cropped_image, (self.feature_extractor.crop_size["width"], self.feature_extractor.crop_size["height"])
         )
         image_embeddings = self._encode_image(cropped_image, device, num_videos_per_prompt)
 
         # 3.2.2 Image latents.
-        resized_image = _center_crop_wide(image, (orig_width, orig_height))
+        resized_image = _center_crop_wide(image, (width, height))
         image = self.image_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
         image_latents = self.prepare_image_latents(
             image,
@@ -828,8 +832,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             num_frames,
-            orig_height,
-            orig_width,
+            height,
+            width,
             prompt_embeds.dtype,
             device,
             generator,
@@ -854,7 +858,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
             original_size = images[0].shape[-2:]
         else:
             original_size = images.shape[-2:]
-        target_size = (orig_height, orig_width)
+        target_size = (height, width)
 
         add_text_embeds = pooled_prompt_embeds
         add_time_ids = self.helper._get_add_time_ids(original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype)
@@ -939,9 +943,10 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                     }
 
                 _, _, control_model_input_h, control_model_input_w = control_model_input.shape
-                if (control_model_input_h, control_model_input_w) != (int(orig_width / self.vae_scale_factor), int(orig_height / self.vae_scale_factor)):
-                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (int(orig_width / self.vae_scale_factor), int(orig_height / self.vae_scale_factor)))
-                    reshaped_images = F.adaptive_avg_pool2d(images, (orig_width, orig_height))
+                if (control_model_input_h, control_model_input_w) != (64, 64) and use_size_512:
+                    # print("we are here")
+                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (20, 32))
+                    reshaped_images = F.adaptive_avg_pool2d(images, (160, 256))
                 else:
                     reshaped_control_model_input = control_model_input
                     reshaped_images = images
@@ -966,6 +971,14 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                         skip_conv_in = skip_conv_in,
                         skip_time_emb = skip_time_emb,
                     )
+                    # print the shape of the down_block_res_samples and mid_block_res_sample
+                    # for k in range(len(down_block_res_samples)):
+                        # print("down_block_res_samples", down_block_res_samples[k].shape)
+                    # print("down_block_res_samples", down_block_res_samples[0].shape)
+                    # print("mid_block_res_sample", mid_block_res_sample.shape)
+
+
+                # this will be non interlaced when arranged!
 
 
                 # this part is for MoE router
@@ -1083,6 +1096,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                     if cond_scale == 0:
                         full_adapted_down_block_res_samples = None
                 ###
+
+
                 
                 # predict the noise residual
                 noise_pred = self.unet(

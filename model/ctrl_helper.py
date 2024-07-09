@@ -67,10 +67,18 @@ class ControlNetHelper(ModelMixin, ConfigMixin):
                 ]
             )
         else:
+            #SAM: jasper ControlNet uses (160, 256), original was:
+            # self.conditioning_image_transforms = T.transforms.Compose(
+            #     [
+            #         T.transforms.Resize(width, interpolation=T.transforms.InterpolationMode.BILINEAR),
+            #         T.transforms.CenterCrop(width),
+            #         T.transforms.ToTensor(),
+            #     ]
+            # )
             self.conditioning_image_transforms = T.transforms.Compose(
                 [
-                    T.transforms.Resize(width, interpolation=T.transforms.InterpolationMode.BILINEAR),
-                    T.transforms.CenterCrop(width),
+                    T.transforms.Resize((height,width), interpolation=T.transforms.InterpolationMode.BILINEAR),
+                    # T.transforms.CenterCrop(512),
                     T.transforms.ToTensor(),
                 ]
             )

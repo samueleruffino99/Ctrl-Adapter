@@ -10,5 +10,4 @@ python inference.py \
 --control_guidance_end 0.8 \
 --height 512 \
 --width 512 \
---evaluation_prompt_file "captions_multi.json" \
---debugpy
+--evaluation_prompt_file "captions_AD_real.json" 

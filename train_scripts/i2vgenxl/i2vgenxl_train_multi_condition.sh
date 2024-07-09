@@ -7,5 +7,5 @@ accelerate launch train.py \
 --control_guidance_end 1.0 \
 --save_n_steps 5000 \
 --validate_every_steps 5000 \
---save_starting_step 5000
+--save_starting_step 5000 \
 --extract_control_conditions True 
