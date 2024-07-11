@@ -6,41 +6,70 @@ import json
 import cv2
 import argparse
 from tqdm import tqdm
+import random
 
-from utils.utils_data import get_video_files, get_frames, save_captions
+from nuscenes.nuscenes import NuScenes
 
-def load_captions(json_path, scene_dir):
-    """ Load captions from a json file and match them with the corresponding scene names.
+from utils.utils_data import save_captions
+
+# fix random seed for reproducibility
+random.seed(0)
+
+
+def generate_captions(nusc_devkit, json_path, fixed_caption, segments_path, augment_captions=False):
+    """ Generate captions for each scene and save them to a csv file.
     Args:
-        json_path (str): The path to the json file containing the captions.
-        scene_dir (str): The directory containing the scenes.
+        nusc_devkit (NuScenes): NuScenes dataset instance.
+        json_path (str): The path to the json file containing the ANNOTATIONS FROM MLLM.
+        fixed_caption (str): Fixed caption for all scenes.
+        segments_path (str): The path to the directory containing the video segments.
+        augment_captions (bool): Whether to augment the captions with additional information.
     Returns:
-        list: A list of scene names and their corresponding captions. """
+        captions (list): A list of scene names and their corresponding captions. """
+    # Load annotations from the json file
     with open(json_path) as f:
-        samples = json.load(f)
-    scene_names = sorted(os.listdir(scene_dir), key=lambda x: int(x.split('-')[-1].split("_")[0]))
+        annos = json.load(f)
+    # Get the scene names from the segments directory
+    segments_names = os.listdir(segments_path)
+    # Generate captions for each scene segment
     captions = []
-    for scene_name in scene_names:
-        scene_name_clean = scene_name.split("_")[0]
-        try:
-            scene_index = samples["scene_name"].index(scene_name_clean)
-            caption = samples["caption"][scene_index][0]
-            captions.append([scene_name, caption])
-        except ValueError:
-            os.remove(os.path.join(scene_dir, scene_name))
-            print(f"Scene {scene_name} not found in the json file")
+    for scene_name in nusc_devkit.scene:
+        scene_token = scene_name['token']
+        anno = annos[scene_token]
+        for segment_name in segments_names:
+            if scene_name['name'] in segment_name:
+                caption = fixed_caption
+                if augment_captions and random.random() > 0.5:
+                    scenary_conditions = anno.get('scenary', {})
+                    environmental_conditions = anno.get('environmental_condition', {})
+                    # lightning condition
+                    if random.random() > 0.5:
+                        caption += f", during {environmental_conditions['lighting']} light"
+                    # weather condition
+                    if random.random() > 0.5:
+                        caption += f", in {environmental_conditions['weather']} weather"
+                    # road type and conditions
+                    if random.random() > 0.5:
+                        caption += f", on a {environmental_conditions['road_conditions']} {environmental_conditions['road_type']} road"
+                    # scene type conditions
+                    if random.random() > 0.5:
+                        caption += f", in an {scenary_conditions['scene_type']} environment"
+                    # traffic conditions
+                    if random.random() > 0.5:
+                        caption += f", with {scenary_conditions['traffic_conditions']} traffic"
+                # add '.'
+                caption += '.'
+                captions.append([segment_name, caption])
     return captions
 
 
-def generate_captions(fixed_caption, segments_path, csv_path):
-    """ Generate captions for each scene and save them to a csv file.
-    Args:
-        fixed_caption (str): Fixed caption for all scenes.
-        segments_path (str): The path to the directory containing the video segments.
-        csv_path (str): The path to the csv file.
-    Returns:
-        captions (list): A list of scene names and their corresponding captions. """
-    scene_names = os.listdir(segments_path)
+
+
+                
+
+
+
+
     captions = [[scene_name, fixed_caption] for scene_name in scene_names]
     return captions
 
@@ -91,16 +120,17 @@ def process_videos(input_dir, output_dir, segment_length=16):
         save_segments(segments, output_dir, scene)
 
 def main():
-    # TODO: ask Jasper for the jappie_seg.json file and frames directory data
     parser = argparse.ArgumentParser(description='Prepare Nuscenes data for training the model.')
     parser.add_argument('--dataroot', type=str, default='/mnt/d/nuscenes', help='Path to Nuscenes dataset.')
+    parser.add_argument('--version', type=str, default='v1.0-trainval', help='Nuscenes dataset version.')
+    parser.add_argument('--json-filename', default='results_nusc_mllm.json', type=str, help='Filename of the json file containing the annotation from mllm LLaVA.')
     parser.add_argument('--input-dir', default='scenes_frames', type=str, help='Folder containing the frames per each scene.')
     parser.add_argument('--output-dir', default='scenes_videos_segments', type=str, help='folder to save the video segments.')
     parser.add_argument('--cam-type', type=str, default='CAM_FRONT', help='Camera type to extract images.')
     parser.add_argument('--use-adjusted-fov', default=True, action='store_true', help='Use adjusted field of view.')
-    parser.add_argument('--load-captions', default=False, action='store_true', help='Load captions from a json file.')
-    parser.add_argument('--json-filename', default='captions.json', type=str, help='Path to the json file containing the captions, if present.')
-    parser.add_argument('--fixed-caption', default='A driving scene.', type=str, help='Fixed caption for all scenes.')
+    parser.add_argument('--generate-segments', default=False, action='store_true', help='Generate video segments.')
+    parser.add_argument('--fixed-caption', default='A realistic driving scene', type=str, help='Fixed caption for all scenes.')
+    parser.add_argument('--augment-captions', default=False, action='store_true', help='Augment captions with additional information.')
     parser.add_argument('--csv-filename', default='video_captions_nuscenes.csv', type=str, help='Filename of the csv file containing the captions.')
     parser.add_argument('--segment-length', default=16, type=int, help='Length of each video segment.')
     parser.add_argument('--debugpy', action='store_true', help='Enable debugpy for remote debugging')
@@ -108,7 +138,7 @@ def main():
     cam_type_foldername = args.cam_type + "_adj_fov" if args.use_adjusted_fov else args.cam_type
     args.input_path = os.path.join(args.dataroot, 'scenes_frames', cam_type_foldername)
     args.output_path = os.path.join(args.dataroot, args.output_dir)
-    args.json_path = os.path.join(args.dataroot, args.json_filename)
+    args.json_path = os.path.join(args.dataroot, args.version, 'predictions', 'mllm', args.json_filename)
     args.csv_path = os.path.join('sample_data', args.csv_filename)
 
     if args.debugpy:
@@ -117,19 +147,14 @@ def main():
         print("Waiting for debugger attach")
         debugpy.wait_for_client()
 
-    # input_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos"
-    # output_dir = "/mnt/e/13_Jasper_diffused_samples/nuscene_videos_segments"
-    # json_path = "/home/wisley/custom_diffusers_library/src/diffusers/jasper/jappie_seg.json"
-    # csv_path = "jasper_captions.csv"
+    nusc_devkit = NuScenes(version=args.version, dataroot=args.dataroot, verbose=True)
 
     # Generate video segments
-    process_videos(args.input_path, args.output_path, args.segment_length)
+    if args.generate_segments:
+        process_videos(args.input_path, args.output_path, args.segment_length)
 
-    # Load captions from a json file and save them to a csv file (if json present, otherwise use fixed caption)
-    if args.load_captions:
-        captions = load_captions(args.json_path, args.input_path)
-    else:
-        captions = generate_captions(args.fixed_caption, args.output_path, args.csv_filename)
+    # Generate captions from a fixed caption plus additional information from the json file
+    captions = generate_captions(nusc_devkit, args.json_path, args.fixed_caption, args.output_path, args.augment_captions)
     save_captions(captions, args.csv_path)
 
 if __name__ == "__main__":

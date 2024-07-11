@@ -550,6 +550,8 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         image: PipelineImageInput = None,
         height: Optional[int] = 704,
         width: Optional[int] = 1280,
+        orig_height: Optional[int] = 704,
+        orig_width: Optional[int] = 1280,
         target_fps: Optional[int] = 16,
         num_frames: int = 16,
         num_inference_steps: int = 50,
@@ -944,9 +946,9 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
 
                 _, _, control_model_input_h, control_model_input_w = control_model_input.shape
                 if (control_model_input_h, control_model_input_w) != (64, 64) and use_size_512:
-                    # print("we are here")
-                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (20, 32))
-                    reshaped_images = F.adaptive_avg_pool2d(images, (160, 256))
+                    print("AAA")
+                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (int(orig_height / self.vae_scale_factor), int(orig_width / self.vae_scale_factor)))
+                    reshaped_images = F.adaptive_avg_pool2d(images, (orig_height, orig_width))
                 else:
                     reshaped_control_model_input = control_model_input
                     reshaped_images = images

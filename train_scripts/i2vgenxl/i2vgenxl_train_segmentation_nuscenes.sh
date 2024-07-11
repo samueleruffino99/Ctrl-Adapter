@@ -5,7 +5,7 @@ accelerate launch train.py \
 --evaluation_prompt_file "captions.json" \
 --num_inference_steps 50 \
 --control_guidance_end 1.0 \
---max_train_steps 70000 \
+--max_train_steps 100000 \
 --save_n_steps 5000 \
 --validate_every_steps 5000 \
 --save_starting_step 5000 \

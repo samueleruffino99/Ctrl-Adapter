@@ -17,12 +17,12 @@ train_batch_size: 1
 # adding support for different resolutions is left for future work
 use_size_512: False 
 
-# train and generate images at resolution 512 by 512
-height: 144
-width: 256 
+# train and generate images at resolution height by width
+height: 360 #144
+width: 640 #256
 
 # for video generation models (e.g., I2VGen-XL), need to set both of the following as the default settings in the backbone model
-n_sample_frames: 16
+n_sample_frames: 8 #16
 output_fps: 12  # 12 Hz from Nuscenes dataset
 
 # for video generation models (e.g., I2VGen-XL), set input as videos, and eval input as frames

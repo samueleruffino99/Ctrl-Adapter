@@ -515,8 +515,10 @@ def inference_main(inference_args):
                 i2vgenxl_outputs = pipe(
                     prompt=prompt,
                     negative_prompt="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
-                    height = inference_args.height, 
-                    width = inference_args.width,
+                    height= inference_args.height, 
+                    width= inference_args.width,
+                    orig_height= inference_args.height, 
+                    orig_width= inference_args.width,
                     image= images_pil[:inference_args.n_ref_frames],  #images_pil[0], #SAM
                     control_images = control_images,
                     num_inference_steps=inference_args.num_inference_steps,
