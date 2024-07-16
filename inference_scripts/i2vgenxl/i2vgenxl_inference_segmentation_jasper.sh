@@ -6,7 +6,7 @@ python inference.py \
 --eval_input_type "frames" \
 --evaluation_input_folder "assets/evaluation/frames" \
 --global_step 70000 \
---n_sample_frames 8 \
+--n_sample_frames 16 \
 --n_ref_frames 1 \
 --num_inference_steps 50 \
 --control_guidance_end 0.8 \
