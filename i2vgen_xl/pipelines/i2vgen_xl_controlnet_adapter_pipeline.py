@@ -548,6 +548,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         image: PipelineImageInput = None,
+        use_multiple_ref_frames: bool = False,
         height: Optional[int] = 704,
         width: Optional[int] = 1280,
         orig_height: Optional[int] = 704,

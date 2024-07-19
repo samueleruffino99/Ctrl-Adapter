@@ -537,14 +537,17 @@ def inference_main(inference_args):
             control_images = control_images[:num_frames]
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 output_images = pipe(
-                    image=images_pil[0], 
+                    image=images_pil[:inference_args.n_ref_frames],  #images_pil[0], #SAM 
+                    use_multiple_ref_frames=True if inference_args.n_ref_frames > 1 else False,
                     control_images = control_images, 
                     prompt=prompt, # please note that for SVD, we also need prompt, which will be given as input to SDv1.5 ControlNet
                     decode_chunk_size=8, 
                     generator=generator, 
                     motion_bucket_id=127, 
-                    orig_height=inference_args.height, 
-                    orig_width=inference_args.width,
+                    height= inference_args.height, 
+                    width= inference_args.width,
+                    orig_height= inference_args.height, 
+                    orig_width= inference_args.width,
                     noise_aug_strength=0.02,
                     num_inference_steps=inference_args.num_inference_steps,
                     fps = target_fps,

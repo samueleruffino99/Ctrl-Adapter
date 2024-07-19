@@ -463,7 +463,10 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
             for down_block_res_sample, down_block_additional_residual in zip(
                     down_block_res_samples, down_block_additional_residuals
-            ):
+            ):  
+                # if the shape of down_block_additional_residual is not suffiecient please torch interpolate
+                if down_block_res_sample.shape[2:] != down_block_additional_residual.shape[2:]:
+                    down_block_additional_residual = torch.nn.functional.interpolate(down_block_additional_residual, size=down_block_res_sample.shape[2:], mode='bilinear', align_corners=False)
                 down_block_res_sample = down_block_res_sample + down_block_additional_residual
                 new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
 
@@ -486,6 +489,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         if mid_block_additional_residual is not None:
             if mid_block_additional_residual.dim() == 5:
                 mid_block_additional_residual = rearrange(mid_block_additional_residual, "b c f h w -> (b f) c h w")
+            # if the shape of mid_block_additional_residual is not suffiecient please torch interpolate
+            if sample.shape[2:] != mid_block_additional_residual.shape[2:]:
+                # print(" before sample.shape, mid_block_additional_residual.shape", sample.shape, mid_block_additional_residual.shape)
+                mid_block_additional_residual = torch.nn.functional.interpolate(mid_block_additional_residual, size=sample.shape[2:], mode='bilinear', align_corners=False)
+                # print(" after sample.shape, mid_block_additional_residual.shape", sample.shape, mid_block_additional_residual.shape)
             sample = sample + mid_block_additional_residual
         ##############   finished   #############
              
@@ -495,6 +503,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         for i, upsample_block in enumerate(self.up_blocks):
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+            print(f"Shapes of res_samples for block {i}: {[x.shape for x in res_samples]}")  # Debug print
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 sample = upsample_block(

@@ -217,9 +217,14 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         device: Union[str, torch.device],
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
+        use_multiple_ref_frames: bool,
     ):
         image = image.to(device=device)
         image_latents = self.vae.encode(image).latent_dist.mode()
+
+        if use_multiple_ref_frames:
+            # [num_frames, channels, height, width] -> [batch, num_frames, channels, height, width]
+            image_latents = image_latents.unsqueeze(0)
 
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
@@ -230,7 +235,10 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             image_latents = torch.cat([negative_image_latents, image_latents])
 
         # duplicate image_latents for each generation per prompt, using mps friendly method
-        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
+        if use_multiple_ref_frames:
+            image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1, 1)
+        else:
+            image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
 
         return image_latents
 
@@ -361,9 +369,12 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
     def __call__(
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        use_multiple_ref_frames: bool = False,
         prompt: str = "",
-        orig_height: int = 576,
-        orig_width: int = 1024,
+        height: int = 576,
+        width: int = 1024,
+        orig_height: Optional[int] = 704,
+        orig_width: Optional[int] = 1280,
         num_frames: Optional[int] = None,
         num_inference_steps: int = 25,
         min_guidance_scale: float = 1.0,
@@ -403,9 +414,9 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
                 Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0, 1]`.
-            orig_height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            orig_width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             num_frames (`int`, *optional*):
                 The number of video frames to generate. Defaults to `self.unet.config.num_frames`
@@ -488,19 +499,19 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
 
         # 0. Default height and width to unet
-        orig_height = orig_height or self.unet.config.sample_size * self.vae_scale_factor
-        orig_width = orig_width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         num_frames = num_frames if num_frames is not None else self.unet.config.num_frames
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, orig_height, orig_width)
+        self.check_inputs(image, height, width)
 
         # 2. Define call parameters
-        if isinstance(image, PIL.Image.Image):
+        if isinstance(image, PIL.Image.Image) or (isinstance(image, list) and use_multiple_ref_frames):
             batch_size = 1
-        elif isinstance(image, list):
+        elif isinstance(image, list) and not use_multiple_ref_frames:
             batch_size = len(image)
         else:
             batch_size = image.shape[0]
@@ -530,8 +541,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             assert len(control_images) == video_length * batch_size
             images = self.helper.prepare_images(
                     images=control_images,
-                    width=orig_width,
-                    height=orig_height,
+                    width=width,
+                    height=height,
                     batch_size=batch_size,
                     num_images_per_prompt=1,
                     device=device,
@@ -539,7 +550,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
-            orig_height, orig_width = images.shape[-2:]
+            height, width = images.shape[-2:]
+            print("this is the height and the with", height, width)
         elif isinstance(controlnet, MultiControlNetModel):
             raise Exception("not supported yet")
         else:
@@ -557,7 +569,7 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=orig_height, width=orig_width).to(device)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
@@ -570,6 +582,7 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             device=device,
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
+            use_multiple_ref_frames=use_multiple_ref_frames,
         )
         image_latents = image_latents.to(image_embeddings.dtype)
 
@@ -578,8 +591,14 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             self.vae.to(dtype=torch.float16)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
-        # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
-        image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
+        if use_multiple_ref_frames:
+            # image_latents [batch, num_ref_frames, channels, height, width] -> [batch, num_frames, channels, height, width]
+            # repeat the last frame until I get num_frames frames
+            last_frame = image_latents[:, -1].unsqueeze(1)
+            image_latents = torch.cat([image_latents, last_frame.repeat(1, num_frames - image_latents.shape[1], 1, 1, 1)], dim=1)
+        else:
+            # image_latents [batch, channels, height, width] -> [batch, num_frames, channels, height, width]
+            image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
 
         # 5. Get Added Time IDs
         added_time_ids = self._get_add_time_ids(
@@ -603,8 +622,8 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             batch_size * num_videos_per_prompt,
             num_frames,
             num_channels_latents,
-            orig_height,
-            orig_width,
+            height,
+            width,
             image_embeddings.dtype,
             device,
             generator,
@@ -662,8 +681,9 @@ class SVDControlNetAdapterPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
 
                 _, _, control_model_input_h, control_model_input_w = control_model_input.shape
-                if (control_model_input_h, control_model_input_w) != (orig_width / self.vae_scale_factor, orig_height / self.vae_scale_factor):
-                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (orig_width / self.vae_scale_factor, orig_height / self.vae_scale_factor))
+                if (control_model_input_h, control_model_input_w) != (64, 64) and use_size_512:
+                    print("resizing control model input")
+                    reshaped_control_model_input = F.adaptive_avg_pool2d(control_model_input, (int(orig_width / self.vae_scale_factor), int(orig_height / self.vae_scale_factor)))
                     reshaped_images = F.adaptive_avg_pool2d(images, (orig_width, orig_height))
                 else:
                     reshaped_control_model_input = control_model_input
