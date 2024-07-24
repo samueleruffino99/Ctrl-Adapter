@@ -18,6 +18,11 @@ import uuid
 import io
 import html
 import re
+import scipy
+
+# set seed
+torch.manual_seed(0)
+np.random.seed(0)
 
 
 class FIDDataset(torch.utils.data.Dataset):
@@ -38,22 +43,22 @@ class FIDDataset(torch.utils.data.Dataset):
 
 class FVDVideoDataset(torch.utils.data.Dataset):
     """Dataset class for FVD calculation."""
-    def __init__(self, image_paths, transform=None, segments_length=8):
+    def __init__(self, image_paths, transform=None, segments_length=16):
         self.image_paths = image_paths
         self.transform = transform
         self.segments_length = segments_length
         # create video paths based on segments_length
         self.video_paths = [image_paths[i:i+self.segments_length] for i in range(0, len(image_paths), self.segments_length)]
-
+        self.video_paths = [self.video_paths[0]]
     def __len__(self):
         return len(self.video_paths)
 
     def __getitem__(self, idx):
-        video_frames = [Image.open(f) for f in self.video_paths[idx]]
-        video_frames = np.transpose(video_frames, (3, 0, 2, 1))
-        video_frames = torch.from_numpy(video_frames)
+        video_frames = [Image.open(f).convert('RGB') for f in self.video_paths[idx]]
         if self.transform:
-            video_frames = self.transform(video_frames)
+            video_frames = [self.transform(frame) for frame in video_frames]
+        video_frames = torch.stack(video_frames)
+        video_frames = video_frames.permute(1, 0, 2, 3)
         return video_frames
 
 
@@ -124,18 +129,26 @@ def open_url(url, num_attempts=10, verbose=False, cache_dir=None):
     return io.BytesIO(url_data)
 
 
+# def load_i3d(device='cuda'):
+#     """Load the I3D model from PyTorch Hub."""
+#     # model = torch.hub.load('kenshohara/video-classification-3d-cnn-pytorch', 'i3d_inception', pretrained=True)
+#     # URL from StyleGAN-V repository!
+#     _feature_detector_cache = dict()
+#     detector_url = 'https://www.dropbox.com/s/ge9e5ujwgetktms/i3d_torchscript.pt?dl=1'
+#     detector_kwargs = dict(rescale=True, resize=True, return_features=True) # Return raw features before the softmax layer.
+#     key = (detector_url, device)
+#     if key not in _feature_detector_cache:
+#         with open_url(detector_url, verbose=True) as f:
+#             _feature_detector_cache[key] = torch.jit.load(f).eval()
+#     return _feature_detector_cache[key]
+
 def load_i3d(device='cuda'):
     """Load the I3D model from PyTorch Hub."""
-    # model = torch.hub.load('kenshohara/video-classification-3d-cnn-pytorch', 'i3d_inception', pretrained=True)
-    # URL from StyleGAN-V repository!
-    _feature_detector_cache = dict()
     detector_url = 'https://www.dropbox.com/s/ge9e5ujwgetktms/i3d_torchscript.pt?dl=1'
-    detector_kwargs = dict(rescale=True, resize=True, return_features=True) # Return raw features before the softmax layer.
-    key = (detector_url, device)
-    if key not in _feature_detector_cache:
-        with open_url(detector_url, verbose=True) as f:
-            _feature_detector_cache[key] = torch.jit.load(f).eval()
-    return _feature_detector_cache[key]
+    detector_kwargs = dict(rescale=False, resize=False, return_features=True) # Return raw features before the softmax layer.
+    with open_url(detector_url, verbose=False) as f:
+        detector = torch.jit.load(f).eval().to(device)
+    return detector
 
 
 def get_inception_activations(image_paths, model, batch_size=32, num_workers=1, device='cuda'):
@@ -167,43 +180,45 @@ def get_inception_activations(image_paths, model, batch_size=32, num_workers=1, 
     return features.cpu().numpy()
 
 
-def get_i3d_activations(frames, model, batch_size=32, num_workers=1, device='cuda'):
+def get_i3d_activations(frames, model, batch_size=32, segments_length=16, num_workers=1, device='cuda'):
     """Get model activations for a batch of videos.
     Args:
         frames (list): List of video frames paths.
         model (torch.nn.Module): Model to extract features.
         batch_size (int): Batch size for feature extraction.
+        segments_length (int): Number of frames per video segment.
         num_workers (int): Number of workers for data loading.
         device (str): Device to run the evaluation on.
     Returns:
         ndarray: Activations for the input videos."""
-    detector_kwargs = dict(rescale=True, resize=True, return_features=True) # Return raw features before the softmax layer.
+    detector_kwargs = dict(rescale=False, resize=False, return_features=True) # Return raw features before the softmax layer.
     model.eval()
     if batch_size > len(frames):
         batch_size = len(frames)
     dataset = FVDVideoDataset(frames, transform=transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor()
-    ]), segments_length=8)
+    ]), segments_length=segments_length)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=False, num_workers=num_workers)
-    features = []
+    all_features = []
     for batch in tqdm(dataloader, desc=f"I3D feature extraction"):
         batch = batch.to(device)
         with torch.no_grad():
-            pred = model(batch)
-            features.append(pred)
-    features = torch.cat(features, dim=0)
-    return features.cpu().numpy()
+            features = model(batch, **detector_kwargs)
+            features = features.detach().cpu().numpy()
+            all_features.append(features)
+    all_features = np.concatenate(all_features, axis=0)
+    return all_features
     
 
-def calculate_image_statistics(features):
+def compute_statistics(features):
     """Calculate mean and covariance of features for FID calculation."""
     mu = np.mean(features, axis=0)
     sigma = np.cov(features, rowvar=False)
     return mu, sigma
 
 
-def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
+def compute_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     """Numpy implementation of the Frechet Distance.
     The Frechet distance between two multivariate Gaussians X_1 ~ N(mu_1, C_1) and X_2 ~ N(mu_2, C_2) is d^2 = ||mu_1 - mu_2||^2 + Tr(C_1 + C_2 - 2*sqrt(C_1*C_2)).
     Stable version by Dougal J. Sutherland.
@@ -265,9 +280,9 @@ def compute_fid(original_image_paths, generated_image_paths, inception_model, ba
     inception_model.to(device)
     original_features = get_inception_activations(original_image_paths, inception_model, batch_size=batch_size, num_workers=num_workers, device=device)
     generated_features = get_inception_activations(generated_image_paths, inception_model, batch_size=batch_size, num_workers=num_workers, device=device)
-    mu1, sigma1 = calculate_image_statistics(original_features)
-    mu2, sigma2 = calculate_image_statistics(generated_features)
-    fid = calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
+    mu1, sigma1 = compute_statistics(original_features)
+    mu2, sigma2 = compute_statistics(generated_features)
+    fid = compute_frechet_distance(mu1, sigma1, mu2, sigma2)
     return fid
 
 
@@ -290,10 +305,11 @@ def compute_ssims(original_image_paths, generated_image_paths, batch_size=32, nu
         if original_array.shape == generated_array.shape:
             s = ssim(original_array, generated_array, multichannel=True, channel_axis=2)
             ssim_values.append(s)
-    return ssim_values
+    avg_ssim = np.mean(ssim_values)
+    return avg_ssim
 
 
-def compute_fvd(original_images, generated_images, i3d_model, batch_size=32, num_workers=1, device='cuda'):
+def compute_fvd(original_images, generated_images, i3d_model, batch_size=32, segments_length=16, num_workers=1, device='cuda'):
     """Calculate FVD between original and generated videos.
     Args:
         original_images (list): List of original images.
@@ -305,13 +321,16 @@ def compute_fvd(original_images, generated_images, i3d_model, batch_size=32, num
     Returns:
         float: FVD between the two sets of videos."""
     i3d_model.to(device)
-    original_features = get_i3d_activations(original_images, i3d_model, batch_size=batch_size, num_workers=num_workers, device=device)
-    generated_features = get_i3d_activations(generated_images, i3d_model, batch_size=batch_size, num_workers=num_workers, device=device)
-    # Placeholder for FVD calculation
-    return None
+    original_features = get_i3d_activations(original_images, i3d_model, batch_size=batch_size, segments_length=segments_length, num_workers=num_workers, device=device)
+    generated_features = get_i3d_activations(generated_images, i3d_model, batch_size=batch_size, segments_length=segments_length, num_workers=num_workers, device=device)
+    # Compute statistics
+    mu1, sigma1 = compute_statistics(original_features)
+    mu2, sigma2 = compute_statistics(generated_features)
+    fvd = compute_frechet_distance(mu1, sigma1, mu2, sigma2)
+    return float(fvd)
 
 
-def calculate_metrics_for_scenes(original_dir, generated_dir, inception_model, i3d_model, batch_size_inception=32, batch_size_i3d=1, num_workers=1, device='cuda'):
+def calculate_metrics_for_scenes(original_dir, generated_dir, inception_model, i3d_model, batch_size_inception=32, batch_size_i3d=1, segments_length=16, num_workers=1, device='cuda'):
     """Calculate FID, FVD, and SSIM for all scenes and organize in a dictionary.
     Args:
         original_dir (str): Path to the original data directory.
@@ -323,7 +342,7 @@ def calculate_metrics_for_scenes(original_dir, generated_dir, inception_model, i
         device (str): Device to run the evaluation on.
     Returns:
         dict: Dictionary containing FID, FVD, and SSIM for each scene."""
-    scene_folders = sorted(os.listdir(original_dir))
+    scene_folders = sorted(os.listdir(generated_dir))
     results = {}
 
     for scene in scene_folders:
@@ -334,15 +353,18 @@ def calculate_metrics_for_scenes(original_dir, generated_dir, inception_model, i
 
         original_image_paths = sorted([os.path.join(original_scene_path, f) for f in os.listdir(original_scene_path)])
         generated_image_paths = sorted([os.path.join(generated_scene_path, f) for f in os.listdir(generated_scene_path)])
+        n_gen_frames = len(generated_image_paths)
+        original_image_paths = original_image_paths[:n_gen_frames]
+        generated_image_paths = generated_image_paths[:n_gen_frames]
 
         # Calculate FID
-        # results[scene]['FID'] = compute_fid(original_image_paths, generated_image_paths, inception_model, batch_size=batch_size_inception, num_workers=num_workers, device=device)
+        results[scene]['FID'] = compute_fid(original_image_paths, generated_image_paths, inception_model, batch_size=batch_size_inception, num_workers=num_workers, device=device)
 
         # Calculate SSIM for each pair of original and generated images
-        # results[scene]['SSIM'] = compute_ssims(original_image_paths, generated_image_paths, batch_size=batch_size_inception, num_workers=num_workers, device=device)
+        results[scene]['SSIM'] = compute_ssims(original_image_paths, generated_image_paths, batch_size=batch_size_inception, num_workers=num_workers, device=device)
 
         # Placeholder for FVD calculation
-        results[scene]['FVD'] = compute_fvd(original_image_paths, generated_image_paths, i3d_model, batch_size=batch_size_i3d, num_workers=num_workers, device=device)
+        results[scene]['FVD'] = compute_fvd(original_image_paths, generated_image_paths, i3d_model, batch_size=batch_size_i3d, segments_length=segments_length, num_workers=num_workers, device=device)
 
     return results
 
@@ -350,8 +372,8 @@ def calculate_metrics_for_scenes(original_dir, generated_dir, inception_model, i
 def main():
     parser = argparse.ArgumentParser(description='Generate front view images from nuScenes dataset')
     parser.add_argument('--original-data-path', type=str, default="/mnt/d/nuscenes/scenes_frames/CAM_FRONT_adj_fov", help='Path to original data directory')
-    parser.add_argument('--generated-data-path', type=str, default="/mnt/d/nuscenes/scenes_frames/CAM_FRONT_adj_fov", help='Path to generated data directory')
-    parser.add_argument('--segments-length', type=int, default=8, help='Number of frames per video segment')
+    parser.add_argument('--generated-data-path', type=str, default="/mnt/d/nuscenes/prescanros2_diffused_video", help='Path to generated data directory')
+    parser.add_argument('--segments-length', type=int, default=16, help='Number of frames per video segment')
     parser.add_argument('--device', type=str, default="cuda", help='Device to run the evaluation on')
     parser.add_argument('--num-workers', type=int, default=1, help='Number of workers for data loading')
     parser.add_argument('--batch-size-inception', type=int, default=32, help='Batch size for data loading')
@@ -386,13 +408,13 @@ def main():
     inception_model = load_inception_v3()
     i3d_model = load_i3d()
 
-    metrics = calculate_metrics_for_scenes(args.original_data_path, args.generated_data_path, inception_model, i3d_model, batch_size_inception=args.batch_size_inception, batch_size_i3d=args.batch_size_i3d , num_workers=num_workers, device=device)
+    metrics = calculate_metrics_for_scenes(args.original_data_path, args.generated_data_path, inception_model, i3d_model, batch_size_inception=args.batch_size_inception, batch_size_i3d=args.batch_size_i3d , segments_length=args.segments_length , num_workers=num_workers, device=device)
     for scene, data in metrics.items():
         print(f"Scene: {scene}, FID: {data['FID']}, Average SSIM: {np.mean(data['SSIM'])}")
     # compute average among all scenes
     fid_values = [data['FID'] for data in metrics.values()]
     ssim_values = [np.mean(data['SSIM']) for data in metrics.values()]
-    print(f"Average FID: {np.mean(fid_values)}, Average SSIM: {np.mean(ssim_values)}")
+    print(f"Average FID: {np.mean(fid_values)}, Average SSIM: {np.mean(ssim_values)}, Average FVD: {data['FVD']}")
 
 if __name__ == "__main__":
     main()

@@ -63,17 +63,6 @@ def generate_captions(nusc_devkit, json_path, fixed_caption, segments_path, augm
     return captions
 
 
-
-
-                
-
-
-
-
-    captions = [[scene_name, fixed_caption] for scene_name in scene_names]
-    return captions
-
-
 def get_segments(frames, segment_length=16):
     """ Get segments of frames.
     Args:
