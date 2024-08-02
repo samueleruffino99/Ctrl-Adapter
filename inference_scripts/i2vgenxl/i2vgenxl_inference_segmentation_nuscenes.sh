@@ -1,7 +1,7 @@
 python inference.py \
 --model_name "i2vgenxl" \
 --control_types "segmentation" \
---segmentation_type "odise" \
+--segmentation_type "ade" \
 --local_checkpoint_path "checkpoints/adapter_ade_360x640" \
 --eval_input_type "frames" \
 --evaluation_input_folder "assets/evaluation/frames" \
