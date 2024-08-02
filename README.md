@@ -183,6 +183,26 @@ We list the inference scripts for different tasks mentioned in our paper as foll
 
 
 
+## Video Generation with Segmentation Control (NuScenes)
+
+<br>
+<img width="800" src="assets/nuscenes.gif"/>
+<br>
+
+We currently implemented segmentation control on **I2VGen-XL**. Run this on a local pretrained checkpoint (no HF).
+
+Notice that in these bash files, you can set the segmentation type that you want to use ("ade" or "odise"), depending which ControlNet you are using, in this way the Prescan segmentation will be converted to the correct format.
+
+NB: for inference w/o extracted condition, segmentation_type "ade" is only support, since the deafult segmentor extarct the maps in ade format.
+
+Inference (w/ extracted condition) | Inference (w/o extracted condition) |
+|---------|--------|
+| [command](/inference_scripts/i2vgenxl/i2vgenxl_inference_segmentation_nuscenes.sh)       | [command](/inference_scripts/i2vgenxl/i2vgenxl_inference_extract_segmentation_from_raw_frames_nuscenes.sh)   
+
+NB: If you want to add more data to test on, place raw frames and segmentation into ```evaluation/frames/raw_input``` and ```evaluation/frames/segmentation```, along with a caption.csv with the corresponding folder name specified in it (look for other examples to see a reference).
+
+
+
 ## Video Generation with Multi-Condition Control
 
 <br>

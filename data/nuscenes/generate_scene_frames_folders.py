@@ -71,10 +71,10 @@ def process_nuscenes_data(nusc, data_dir, scale_factor=0.5, cam_type="CAM_FRONT"
 # Main function to setup nuScenes SDK and path
 def main():
     parser = argparse.ArgumentParser(description='Generate front view images from nuScenes dataset')
-    parser.add_argument('--dataroot', type=str, default="/mnt/d/nuscenes", help='Path to nuScenes dataset')
+    parser.add_argument('--dataroot', type=str, default="/mnt/d/AD/datasets/nuscenes", help='Path to nuScenes dataset')
     parser.add_argument('--version', type=str, default="v1.0-trainval", help='nuScenes dataset version')
     parser.add_argument('--cam-type', type=str, default="CAM_FRONT", help='Camera type to extract images')
-    parser.add_argument('--output-dir', type=str, default="scenes_frames", help='Path to output directory')
+    parser.add_argument('--output-path', type=str, default="/mnt/d/z004x7dn/datasets/nuscenes/scenes_frames", help='Path to output directory')
     parser.add_argument('--scale-factor', type=float, default=0.4, help='Scale factor for resizing images, 0.4 correspond to divide by 2.5 each dimension.')
     parser.add_argument('--save-adjusted-fov', action='store_true', help='Save images with adjusted field of view')
     parser.add_argument('--fov-from', type=float, default=120, help='Initial field of view in degrees')
@@ -88,7 +88,6 @@ def main():
         print("Waiting for debugger attach")
         debugpy.wait_for_client()
 
-    args.output_path = os.path.join(args.dataroot, args.output_dir)
     nusc = NuScenes(version=args.version, dataroot=args.dataroot, verbose=True)
     process_nuscenes_data(nusc, args.output_path, args.scale_factor, args.cam_type, args.save_adjusted_fov, args.fov_from, args.fov_to)
 

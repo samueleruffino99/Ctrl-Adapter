@@ -2,6 +2,51 @@
 
 # 🚅 How To Train 
 
+## AD Training
+### Step 1: Download Training Data
+Download nuScenes dataset and place it into ```/path/to/nuscenes```
+### Step 2: Prepare Data in Specified Format
+#### Generate per-scene resized (and optionally FOV-adjusted) frames
+Run this command to save resized (and optionally adjusted) CAM_FRONT frames for every scene.
+```bash
+python -m data.nuscenes.generate_scene_frames_folders --dataroot /path/to/nuscenes --version v1.0-trainval --cam-type CAM_FRONT --output-path /path/to/train/data --scale-factor 0.4 --save-adjusted-fov --fov-from 120 --fov-to 94
+# Example
+python -m data.nuscenes.generate_scene_frames_folders --dataroot /mnt/d/AD/datasets/nuscenes --version v1.0-trainval --cam-type CAM_FRONT --output-path /mnt/d/z004x7dn/datasets/nuscenes/scenes_frames --scale-factor 0.4 --save-adjusted-fov --fov-from 120 --fov-to 94
+``` 
+#### Generate training segments and captions
+Run this command to generate training segments (.mp4) and captions (csv file in ./sample_data)
+```bash
+python -m data.nuscenes.data_preparation --dataroot /path/to/nuscenes --version v1.0-trainval --cam-type CAM_FRONT --json-path /path/to/nuscenes/predictions/mllm/results_nusc_mllm.json --input-path /path/to/nuscenes/scenes_frames --output-path /path/to/nuscenes/scenes_videos_segments --use-adjusted-fov --generate-segments --augment-captions --csv-filename video_captions_nuscenes.csv --segment-length 16
+# Example
+python -m data.nuscenes.data_preparation --dataroot /mnt/d/AD/datasets/nuscenes --version v1.0-trainval --cam-type CAM_FRONT --json-path /mnt/d/z004x7dn/datasets/nuscenes/predictions/mllm/results_nusc_mllm.json --input-path /mnt/d/z004x7dn/datasets/nuscenes/scenes_frames --output-path /mnt/d/z004x7dn/datasets/nuscenes/scenes_videos_segments --use-adjusted-fov --generate-segments --augment-captions --csv-filename video_captions_nuscenes.csv --segment-length 16
+``` 
+
+### Step 3: Run Training
+Here is the command we used to start training on I2VGENXL with segmenentation map as control condition on nuscenes driving scenes. Training scripts on I2VGen-XL and SVD are roughly the same.
+
+```
+sh train_scripts/i2vgenxl/i2vgenxl_train_segmentation_nuscenes.sh
+```
+
+Specifically, in the training scripts:
+
+`--yaml_file`: The configuration file for all hyper-parameters related to **training**.
+
+The rest of the hyper-parameters in the training script are for **evaluation**, which can help you monitor the training process better.
+
+`--save_n_steps`: Save the trained adapter checkpoints every n training steps.
+
+`--save_starting_step`: Save the trained adapter checkpoints after such training steps.
+
+`--validate_every_steps`: Perform evaluation every x training steps. The evaluation data are placed under ```./assets/evaluation```. If you prefer to evaluate different samples, you can replace them by following the same file structure.
+
+`--num_inference_steps`: The number of inference steps during inference. We can just set it as the same value as the default inference steps of the backbone model.
+
+```--extract_control_conditions```: If you already have condition image/frames extracted from evaluation image/video (see Inference Data Structure section above), you can set it as ```False```. Otherwise, if you haven't extracted control conditions and only have the raw image/frames, you can set it as ```True```, and our code can automatically extract the control conditions from the evaluation image/frames. The default setting is ```False```.
+
+```--control_guidance_end```: As mentioned above, this is the most important parameter that balances generated image/video quality with control strength. But since we want to see if the training code working or not, we recommend just setting it as 1.0 to give control across all inference steps. You can adjust it to a lower value later after you have a trained model.
+
+## Ctrl-Adapter
 ### Step 1: Download Training Data
 
 - For Ctrl-Adapter training on image backbones (e.g., SDXL), we use 300k images from the [LAION POP](https://laion.ai/blog/laion-pop/) dataset. You can download a subset from this dataset [here](https://huggingface.co/datasets/Ejafa/ye-pop).

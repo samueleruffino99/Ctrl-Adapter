@@ -367,12 +367,12 @@ def inference_main(inference_args):
 
     #SAM
     # change segmentation model based on the segmentation_type used 
-    # if inference_args.segmentation_type == 'odise':
-    #     model_paths['segmentation'] = "JaspervanLeuven/controlnet_rect"
-    # elif inference_args.segmentation_type == 'ade':
-    #     model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
-    # else:
-    #     model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
+    if inference_args.segmentation_type == 'odise':
+        model_paths['segmentation'] = "JaspervanLeuven/controlnet_rect"
+    elif inference_args.segmentation_type == 'ade':
+        model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
+    else:
+        model_paths['segmentation'] = "lllyasviel/control_v11p_sd15_seg"
     
     for control_type, model_path in model_paths.items():
         if (len(inference_args.control_types) == 1 and control_type in inference_args.control_types) or (len(inference_args.control_types) > 1): # single-condition control
@@ -448,8 +448,11 @@ def inference_main(inference_args):
             # print images_pil[0].size and type
             images_pil = [center_crop_and_resize(img, output_size=(inference_args.width, inference_args.height)) for img in images_pil] 
             images_pil = images_pil[:inference_args.n_sample_frames]
-        
 
+        # convert to rgb if not
+        if images_pil[0].mode != 'RGB':
+            images_pil = [img.convert('RGB') for img in images_pil]
+        
         # load or extract condition images
         if inference_args.extract_control_conditions:
             all_conditioning_images_pil = []
@@ -468,15 +471,26 @@ def inference_main(inference_args):
             for cond_dir in condition_input_dir:
                 condition_images_path = os.path.join(cond_dir, sample)
                 #SAM prescan segmentation mapping
+                allowed_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
                 if 'segmentation' in cond_dir and inference_args.segmentation_type is not None:
                     if os.path.isdir(condition_images_path):
-                        condition_frames = sorted(os.listdir(condition_images_path))[:inference_args.n_sample_frames]
+                        # if segmenttion from prescn (ImageSegmentationSensor_1_00001.png)
+                        if "ImageSegmentationSensor" in os.listdir(condition_images_path)[0]:
+                            condition_frames = sorted([f for f in os.listdir(condition_images_path) if f.lower().endswith(allowed_extensions)], key=lambda x: int(x.split('_')[-1].split('.')[0]))[::2]
+                            condition_frames = condition_frames[:inference_args.n_sample_frames]
+                        else:
+                            condition_frames = sorted([f for f in os.listdir(condition_images_path) if f.lower().endswith(allowed_extensions)])[:inference_args.n_sample_frames]
                         conditioning_images_pil = [map_rgb(Image.open(os.path.join(condition_images_path, frame)), mapping_type=inference_args.segmentation_type) for frame in condition_frames]
                     else:
                         conditioning_images_pil = [map_rgb(Image.open(condition_images_path), mapping_type=inference_args.segmentation_type)]
                 else:
                     if os.path.isdir(condition_images_path):
-                        condition_frames = sorted(os.listdir(condition_images_path))[:inference_args.n_sample_frames]
+                        # if segmenttion from prescn (ImageSegmentationSensor_1_00001.png)
+                        if "ImageSegmentationSensor" in os.listdir(condition_images_path)[0]:
+                            condition_frames = sorted([f for f in os.listdir(condition_images_path) if f.lower().endswith(allowed_extensions)], key=lambda x: int(x.split('_')[-1].split('.')[0]))[::2]
+                            condition_frames = condition_frames[:inference_args.n_sample_frames]
+                        else:
+                            condition_frames = sorted([f for f in os.listdir(condition_images_path) if f.lower().endswith(allowed_extensions)])[:inference_args.n_sample_frames]
                         conditioning_images_pil = [Image.open(os.path.join(condition_images_path, frame)) for frame in condition_frames]
                     else:
                         conditioning_images_pil = [Image.open(condition_images_path)]
@@ -511,6 +525,7 @@ def inference_main(inference_args):
         if inference_args.model_name == 'i2vgenxl':
             num_frames = inference_args.n_sample_frames if 'n_sample_frames' in inference_args else 16 # default 
             target_fps = inference_args.output_fps if 'output_fps' in inference_args else 16 # default 
+            print(num_frames, target_fps)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 i2vgenxl_outputs = pipe(
                     prompt=prompt,

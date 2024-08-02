@@ -548,8 +548,8 @@ def main(args):
         'depth': "lllyasviel/control_v11f1p_sd15_depth",
         'canny': "lllyasviel/control_v11p_sd15_canny",
         'normal': "lllyasviel/control_v11p_sd15_normalbae",
-        # 'segmentation': "lllyasviel/control_v11p_sd15_seg",
-        'segmentation': 'JaspervanLeuven/controlnet_rect',
+        'segmentation': "lllyasviel/control_v11p_sd15_seg",
+        # 'segmentation': 'JaspervanLeuven/controlnet_rect',
         'softedge': "lllyasviel/control_v11p_sd15_softedge",
         'lineart': "lllyasviel/control_v11p_sd15_lineart",
         'openpose': "lllyasviel/control_v11p_sd15_openpose",
@@ -925,7 +925,7 @@ def main(args):
     elif args.input_data_type == 'images':
         dataset = ImageLoader(**dataloader_configs)
         
-    dataloader = DataLoader(dataset, args.train_batch_size, shuffle=True, collate_fn=collate_fn)
+    dataloader = DataLoader(dataset, args.train_batch_size, shuffle=True, collate_fn=collate_fn) #, num_workers=args.num_workers)
 
 
 

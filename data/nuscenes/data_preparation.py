@@ -121,11 +121,11 @@ def process_videos(input_dir, output_dir, segment_length=16):
 
 def main():
     parser = argparse.ArgumentParser(description='Prepare Nuscenes data for training the model.')
-    parser.add_argument('--dataroot', type=str, default='/mnt/d/nuscenes', help='Path to Nuscenes dataset.')
+    parser.add_argument('--dataroot', type=str, default='/mnt/d/AD/datasets/nuscenes', help='Path to Nuscenes dataset.')
     parser.add_argument('--version', type=str, default='v1.0-trainval', help='Nuscenes dataset version.')
-    parser.add_argument('--json-filename', default='results_nusc_mllm.json', type=str, help='Filename of the json file containing the annotation from mllm LLaVA.')
-    parser.add_argument('--input-dir', default='scenes_frames', type=str, help='Folder containing the frames per each scene.')
-    parser.add_argument('--output-dir', default='scenes_videos_segments', type=str, help='folder to save the video segments.')
+    parser.add_argument('--json-path', default='/mnt/d/z004x7dn/datasets/nuscenes/predictions/mllm/results_nusc_mllm.json', type=str, help='Filename of the json file containing the annotation from mllm LLaVA.')
+    parser.add_argument('--input-path', default='/mnt/d/z004x7dn/datasets/nuscenes/scenes_frames', type=str, help='Folder containing the frames per each scene.')
+    parser.add_argument('--output-path', default='/mnt/d/z004x7dn/datasets/nuscenes/scenes_videos_segments', type=str, help='folder to save the video segments.')
     parser.add_argument('--cam-type', type=str, default='CAM_FRONT', help='Camera type to extract images.')
     parser.add_argument('--use-adjusted-fov', default=True, action='store_true', help='Use adjusted field of view.')
     parser.add_argument('--generate-segments', default=False, action='store_true', help='Generate video segments.')
@@ -136,9 +136,7 @@ def main():
     parser.add_argument('--debugpy', action='store_true', help='Enable debugpy for remote debugging')
     args = parser.parse_args()
     cam_type_foldername = args.cam_type + "_adj_fov" if args.use_adjusted_fov else args.cam_type
-    args.input_path = os.path.join(args.dataroot, 'scenes_frames', cam_type_foldername)
-    args.output_path = os.path.join(args.dataroot, args.output_dir)
-    args.json_path = os.path.join(args.dataroot, args.version, 'predictions', 'mllm', args.json_filename)
+    args.input_path = os.path.join(args.input_path, cam_type_foldername)
     args.csv_path = os.path.join('sample_data', args.csv_filename)
 
     if args.debugpy:

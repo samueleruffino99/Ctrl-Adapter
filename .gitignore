@@ -2,3 +2,5 @@
 __pycache__
 /wandb
 /checkpoints
+/xxx
+/Output_i2vgenxl_train_segmentation_nuscenes_defaultcontrolnet_360x640_8_frames

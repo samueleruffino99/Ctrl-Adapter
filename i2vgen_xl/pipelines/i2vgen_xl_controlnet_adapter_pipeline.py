@@ -770,7 +770,7 @@ class I2VGenXLControlNetAdapterPipeline(DiffusionPipeline):
                 )
 
             height, width = images.shape[-2:]
-            print("this is the height and the with", height, width)
+            # print("this is the height and the with", height, width)
         elif isinstance(controlnet, MultiControlNetModel):
 
             images = []
